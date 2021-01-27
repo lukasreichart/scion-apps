@@ -17,6 +17,7 @@ package pathneg
 
 import (
 	"github.com/scionproto/scion/go/lib/snet"
+	"math"
 )
 
 // path_evaluation.go contains the interface and concrete implementation for path evaluation
@@ -29,12 +30,8 @@ todo: we need to give some sort of identifier of the end -host on the other side
  */
 
 // PathWeight is the type the path weights are calculated in.
-// currently we have selected uint8 (= 1 byte = 0 to 255), but if we need a bigger space
-// for specifying the value we can of course do this.
-// discuss: whether float / float64 would be more appropriate, because with float we could
-// have non-linear function, such as logistic functions to express this.
-// look at path_selection implemented in appnet for more discussion of this.
-type PathWeight uint8
+// currently we have selected float64 and normalize to [0,1], but could discuss if this is a little wasteful of data
+type PathWeight float64
 
 // PathEvaluator interface needs to be implemented by an object that wants to evaluate paths
 // the values from 1 to 255 are path preferences, 0 is paths that should not be used at
@@ -72,24 +69,33 @@ func (e *RandomPathEvaluator) WeightsForPaths(paths []snet.Path) []PathWeight {
 // ShortestPathEvaluator creates the weights so the shortest path is preferred
 // the implementation for this adapts the code from pgk/appnet/path_selection.go
 type ShortPathEvaluator struct {
-
 }
 
 // the code in this function is taken from pkg/appnet/path_selection.go and adapter
 func (e *ShortPathEvaluator) WeightsForPaths(paths []snet.Path) []PathWeight {
-	//selectedPath := paths[0]
-	//metricFn := func(rawMetric int) (result float64) {
-	//	hopCount := float64(rawMetric)
-	//	midpoint := 7.0
-	//	result = math.Exp(-(hopCount - midpoint)) / (1 + math.Exp(-(hopCount - midpoint)))
-	//	return result
-	//}
-	//return selectedPath, metricFn(len(selectedPath.Metadata().Interfaces))
-	return nil
+	weights := make([]PathWeight, len(paths))
+
+	metricFn := func(rawMetric int) PathWeight {
+		hopCount := float64(rawMetric)
+		midpoint := 7.0
+		result := math.Exp(-(hopCount - midpoint)) / (1 + math.Exp(-(hopCount - midpoint)))
+		return PathWeight(result)
+	}
+
+	for i, path := range paths {
+		weights[i] = metricFn(len(path.Metadata().Interfaces))
+	}
+
+	return weights
 }
 
 // LargestMTU Evaluator
 // Use the code from appnet
+//type LargestMTUEvaluator struct {}
+//
+//func (e *LargestMTUEvaluator) WeightsForPaths(paths []snet.Path) []PathWeight {
+//
+//}
 
 // InteractivePathEvaluator interactively queries the user to specify the path preferences.
 // adapted the function from pkg/appnet/path_selection.go

@@ -24,18 +24,28 @@ import "github.com/scionproto/scion/go/lib/serrors"
 type PathSelector interface {
 	// invariant len(weights1) = len(weights)2
 	// num: is the number of paths that should be selected.
-	SelectPaths(weights1 []PathWeight, weights2 []PathWeight, num uint) ([]uint, error)
+	SelectPaths(weights1 []PathWeight, weights2 []PathWeight, num uint) ([]int, error)
 }
 
-type pathSelector struct {
+// currently uses heighest average voting
+type pathSelector struct {}
 
-}
-
-func (p* pathSelector) SelectPaths(weights1 []PathWeight, weights2 []PathWeight, num uint) ([]uint, error) {
+func (p* pathSelector) SelectPaths(weights1 []PathWeight, weights2 []PathWeight, num uint) ([]int, error) {
 	if len(weights1) != len(weights2) {
 		return nil, serrors.New("PathNeg: the passed weights array need to have the same length")
 	}
 
-	return nil, nil
-}
+	highestAverage := PathWeight(0.0)
+	index := 0
 
+	for i, w1 := range weights1 {
+		w2 := weights2[i]
+
+		avg := (w1 + w2) / 2
+		if avg > highestAverage {
+			highestAverage = avg
+			index = i
+		}
+	}
+	return []int{index}, nil
+}

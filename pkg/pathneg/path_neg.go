@@ -134,7 +134,8 @@ func NewPathNeg(port uint16) (Protocol, error) {
 	transport, _ := newMessageTransport(port)
 	return &pathNegProtocol{
 		transport:          transport,
-		evaluator:          &ConstantPathEvaluator{},
+		selector:			&pathSelector{},
+		evaluator:          &ShortPathEvaluator{},
 		activeNegotiations: make(map[string]*negControlBlock, 0),
 	}, nil
 }
@@ -259,9 +260,16 @@ func (p*pathNegProtocol) handlePathProposalMessage(msg MessageInfo, cb func([]sn
 	// todo: here we would have the fancy logic to pick the path
 	log.Info("Calculating local path preferences.")
 
+	localPref := p.evaluator.WeightsForPaths(proposal.Paths)
+
+	selectedPaths, err := p.selector.SelectPaths(proposal.Weights, localPref, 1)
+	if err != nil {
+		return err
+	}
+
 	log.Info("Constructing PathAccept message")
 	accept := PathAccept{
-		Paths: []snet.Path{proposal.Paths[0].Copy()},
+		Paths: []snet.Path{proposal.Paths[selectedPaths[0]].Copy()},
 	}
 
 	log.WithField("Accepted Path", fmt.Sprintf("%s", proposal.Paths[0])).Info("Server has accepted path:")
