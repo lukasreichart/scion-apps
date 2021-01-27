@@ -32,6 +32,7 @@ import (
 func main() {
 	// get the type of host to run server or client
 	server := flag.Bool("server",false,"Mark execution to be a server")
+	addr := flag.String("address", "", "Specify the address to perform path negotiation with")
 
 	flag.Parse()
 
@@ -43,7 +44,11 @@ func main() {
 		return
 	}
 
-	if err := runClient(); err != nil {
+	if *addr == "" {
+		log.Errorf("Please specify the address of the host to perform path negotiation with.")
+	}
+
+	if err := runClient(*addr); err != nil {
 		log.Errorf("Failed to run client with error: %v\n", err)
 		os.Exit(1)
 	}
@@ -79,14 +84,15 @@ func runServer() error {
 	return nil
 }
 
-func runClient() error {
+func runClient(addr string) error {
 	log.Info("Starting the path negotiation client")
 	pathNeg, err := pathneg.NewPathNeg(2222)
 	if err != nil {
 		return fmt.Errorf("Failed to create path neg protocol instance %v\n", err)
 	}
 
-	raddr, err := appnet.ResolveUDPAddr("17-ffaa:1:e8b,[127.0.0.1]:2222")
+	//raddr, err := appnet.ResolveUDPAddr("17-ffaa:1:e8b,[127.0.0.1]:2222")
+	raddr, err := appnet.ResolveUDPAddr(addr)
 	if err != nil {
 		return err
 	}

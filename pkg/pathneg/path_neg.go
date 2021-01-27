@@ -31,8 +31,10 @@ import (
 // ## Implementation ToDos
 // todo: need a way that old connections are cleaned out of the state table
 // todo: how to protect against state exhaustion attacks (limit by ip)
-// todo: change the negotiation method to take a string instead of an raddr.
 // todo: need a way to cleanly shutdown the listen method
+// todo: error handling -> at least log the errors that occur in the go loops
+// todo: callback on server is not implemented
+// todo: paths that are logged on the server look like garbage.
 
 // Some general parameters of the protocol that can be changed.
 const (
