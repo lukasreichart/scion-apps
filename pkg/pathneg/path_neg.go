@@ -82,7 +82,7 @@ type Protocol interface {
 	// Listen should start the server part of the protocol waiting for incoming path negotiation requests on fixed port.
 	Listen(ctx context.Context, cb func([]snet.Path)) error
 	// Negotiate should start the negotiation process with the path negotiation stack running at the addressed in raddr.
-	Negotiate(ctx context.Context, raddr *snet.UDPAddr) ([]snet.Path, error)
+	Negotiate(ctx context.Context, raddr *snet.UDPAddr, cb func([]snet.Path)) error
 }
 
 // atomicBool implementation taken from the golang http package
@@ -152,9 +152,7 @@ func (p*pathNegProtocol) Listen(ctx context.Context, cb func([]snet.Path)) error
 
 		case msg, ok := <-c:
 			if ok {
-				fmt.Printf("Value %d was read.\n", msg)
-
-				if err := p.handleMessage(ctx, msg); err != nil {
+				if err := p.handleMessage(ctx, msg, cb); err != nil {
 					log.Errorf("An error occurred while handling the protocol message: %v\n", err)
 				}
 			} else {
@@ -165,13 +163,12 @@ func (p*pathNegProtocol) Listen(ctx context.Context, cb func([]snet.Path)) error
 }
 
 // Negotiate performs a path negotiation with the host at the passed address
-// the call to this method blocks until the negotiation has succeeded or an error has
-// terminated the negotiation
-func (p*pathNegProtocol) Negotiate(ctx context.Context, raddr *snet.UDPAddr) ([]snet.Path, error) {
+// if the negotiation succeeds the callback is called
+func (p*pathNegProtocol) Negotiate(ctx context.Context, raddr *snet.UDPAddr, cb func([]snet.Path)) error {
 	// construct the path proposal message
 	proposal, err := p.constructPathProposal(raddr)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	log.WithField("PathProposal", proposal).Info("Path proposal constructed\n")
 
@@ -191,7 +188,7 @@ func (p*pathNegProtocol) Negotiate(ctx context.Context, raddr *snet.UDPAddr) ([]
 	log.Info("Send path proposal message")
 
 	if err := p.sendMessageHelper(negState, proposal, raddr); err != nil {
-		return nil, err
+		return err
 	}
 
 	log.Info("Waiting for response")
@@ -199,28 +196,27 @@ func (p*pathNegProtocol) Negotiate(ctx context.Context, raddr *snet.UDPAddr) ([]
 	// block until we get a return message
 	msg := <- c
 	log.Info("Received response message")
-	if err := p.handleMessage(ctx, msg); err != nil {
+	if err := p.handleMessage(ctx, msg, cb); err != nil {
 		close(c)
 		quit<-true
 		close(quit)
-		return nil, err
+		return err
 	}
 	close(c)
 	quit<-true
 	close(quit)
 
-	// now we should have a negotiated path in the local object
-	return []snet.Path{}, nil
+	return nil
 }
 
 // handleMessage calls the correct message handler based on the message type.
-func (p*pathNegProtocol) handleMessage(ctx context.Context, msg MessageInfo) error {
+func (p*pathNegProtocol) handleMessage(ctx context.Context, msg MessageInfo, cb func([]snet.Path)) error {
 	switch msg.Header.MessageType {
 	// we have received a path negotiation proposal from another party
 	case MessageTypePathProposal:
-		return p.handlePathProposalMessage(msg)
+		return p.handlePathProposalMessage(msg, cb)
 	case MessageTypePathAccept:
-		return p.handlePathAcceptMessage(msg)
+		return p.handlePathAcceptMessage(msg, cb)
 	case MessageTypeError:
 		return p.handleErrorMessage(msg)
 	default:
@@ -229,7 +225,7 @@ func (p*pathNegProtocol) handleMessage(ctx context.Context, msg MessageInfo) err
 }
 
 // handlePathProposalMessage handles an incoming PathProposal message
-func (p*pathNegProtocol) handlePathProposalMessage(msg MessageInfo) error {
+func (p*pathNegProtocol) handlePathProposalMessage(msg MessageInfo, cb func([]snet.Path)) error {
 	proposal := msg.Payload.(PathProposal)
 	log.Info("Received a PathProposal message")
 
@@ -276,15 +272,19 @@ func (p*pathNegProtocol) handlePathProposalMessage(msg MessageInfo) error {
 	negState.currentMessage.Store(accept)
 
 	log.Info("Sending PathAccept message back")
-	return p.sendMessageHelper(negState, accept, &msg.From)
+	if err := p.sendMessageHelper(negState, accept, &msg.From); err != nil {
+		return err
+	}
 
 	//log.WithField("Path", fmt.Sprintf("%s", accept.Paths[0])).Info("Negotiation success: ")
 
-	//return nil
+	cb(accept.Paths)
+
+	return nil
 }
 
 // handlePathAccpetMessage handles an incoming PathAccept message
-func (p*pathNegProtocol) handlePathAcceptMessage(msg MessageInfo) error {
+func (p*pathNegProtocol) handlePathAcceptMessage(msg MessageInfo, cb func([]snet.Path)) error {
 	log.Info("Received a PathAccept message")
 	accept := msg.Payload.(PathAccept)
 
@@ -306,6 +306,9 @@ func (p*pathNegProtocol) handlePathAcceptMessage(msg MessageInfo) error {
 	log.WithField("Path accept", accept).Info("Path accept message")
 
 	log.WithField("Path", fmt.Sprintf("%s", accept.Paths[0])).Info("Negotiation success: ")
+
+	// inform the host about the new paths
+	cb(accept.Paths)
 
 	return nil
 }

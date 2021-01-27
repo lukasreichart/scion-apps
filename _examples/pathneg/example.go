@@ -76,7 +76,10 @@ func runServer() error {
 		return fmt.Errorf("Failed to create path neg protocol instance %v\n", err)
 	}
 
-	if err := pathNeg.Listen(context.Background(), newPathHandler); err != nil {
+	if err := pathNeg.Listen(context.Background(), func(paths []snet.Path) {
+		fmt.Println("Server application has received new paths:")
+		printPaths(&paths)
+	}); err != nil {
 		return fmt.Errorf("Failed to start path neg server %v\n")
 	}
 	log.Info("Path Negotiation Server is now ready for connections.")
@@ -97,12 +100,17 @@ func runClient(addr string) error {
 		return err
 	}
 
+	quit := make(chan error)
+
 	log.Info("Negotiating Paths with remote server.")
-	paths, err := pathNeg.Negotiate(context.Background(), raddr)
+	err = pathNeg.Negotiate(context.Background(), raddr, func(paths []snet.Path) {
+		fmt.Println("Client application has received new paths:")
+		printPaths(&paths)
+		quit <- nil
+	})
 	if err != nil {
 		return fmt.Errorf("Failed to negotiate path %v\n", err)
 	}
-	printPaths(&paths)
 
-	return nil
+	return <- quit
 }
